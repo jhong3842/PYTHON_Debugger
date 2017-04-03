@@ -5,8 +5,6 @@ debugger = my_debugger.debugger()
 debugger.load("C:\\Windows\\System32\\calc.exe")
 #pid = raw_input("Input PID : ")
 
-debugger.attach(debugger.pid)
-
 thread_list = debugger.enumerate_threads()
 
 for thread in thread_list:
@@ -22,5 +20,5 @@ for thread in thread_list:
     print "[**] ECX : 0x%08x" % thread_context.Ecx
     print "[**] EDX : 0x%08x" % thread_context.Edx
     
-    
+debugger.debugger_active = True
 debugger.run()

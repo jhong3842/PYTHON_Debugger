@@ -2,7 +2,8 @@
 from ctypes import *
 from my_debugger_defines import *
 from _multiprocessing import *
-from Thread_defines import *
+
+
 
 kernel32 = windll.kernel32
 
@@ -12,13 +13,15 @@ class debugger():
     def __init__(self):
         self.h_process = None   #프로세스 헨들
         self.pid    = None      # 프로세스 pid
-        self.debugger_active    = False     #디버거 동작 유무
+        self.debugger_active    = False     #디버거 동작 유무      
+        self.h_thread = None    #프로세스의 쓰레드
+        self.context = None     #쓰레드 문맥
         pass
 
     def load(self, path_to_exe):
         #프로세스를 생성 할 때, 디버기 형태로 생성할 것인가
         #설정 CREATE_NEW_CONSOLE flag는 새창
-        creation_flags = CREATE_NEW_CONSOLE
+        creation_flags = CREATE_NEW_CONSOLE | DEBUG_PROCESS
 
         #Struct to Object
         startupinfo = STARTUPINFO()
@@ -31,13 +34,13 @@ class debugger():
 
         #cb 자신의 구조체 크기를 넣어줌
         startupinfo.cb = sizeof(startupinfo)
-        print sizeof(startupinfo)
-        if kernel32.CreateProcessA(path_to_exe,
-                                   None,
-                                   None,
-                                   None,
-                                   None,
-                                   creation_flags,
+        
+        if kernel32.CreateProcessA(path_to_exe, # process path
+                                   None,        # parameter
+                                   None,        # process security
+                                   None,        # thread security
+                                   None,        # enable handle inherite
+                                   creation_flags, 
                                    None,
                                    None,
                                    byref(startupinfo),
@@ -48,13 +51,14 @@ class debugger():
         else:
             print "[*]Error : 0x08x." % kernel32.GetLastError()
 
-        #생성된 프로세스 핸들 저장
+        #pid 저장
         self.pid = process_information.dwProcessId
+        #handle 저장
         self.h_process = self.open_process(process_information.dwProcessId)
+
         
     #Get the handle of pid
     def open_process(self,pid):
-
         h_process = kernel32.OpenProcess(win32.PROCESS_ALL_ACCESS, False, pid)
         return h_process
 
@@ -62,7 +66,7 @@ class debugger():
         self.h_process = self.open_process(pid)
         print "[*] PID : %d" % int(pid)
         #Change Controls of Debuggi to Debugger
-        if kernel32.DebugActiveProcess(pid):
+        if kernel32.DebugActiveProcess(self.pid):
             self.debugger_active = True
             self.pid = int(pid)
         else:
@@ -72,7 +76,6 @@ class debugger():
     def run(self):
         #Debugger run
         while self.debugger_active == True:
-            print "run"
             self.get_debug_event()
 
 
@@ -80,19 +83,57 @@ class debugger():
 
         #Debug Event Handler Pointer Structure
         debug_event = DEBUG_EVENT()
-        continue_status = DBG_CONTINUE
-
+    
         #Not yet, Writing Code to handle Debug Event
 
         
         #Waiting occuring Debug Evnet
         if kernel32.WaitForDebugEvent(byref(debug_event), INFINITE):
-            raw_input("Press a key to continue...")
-            self.debugger_active = False
-            kernel32.ContinueDebugEvent(\
-                debug_event.dwProcessId,\
+            
+            #디버그 이벤트가 발생하면 debug_event의 값을 확인
+            self.h_thread = self.open_thread(debug_event.dwThreadId)
+
+            #앞서 구한 thread handle을 이용해서 context get
+            self.context = self.get_thread_context(self.h_thread)
+
+            #print "Event Code : %d Thread Id : %d" %\
+            #(debug_event.dwDebugEventCode, debug_event.dwThreadId)
+            
+
+
+            if debug_event.dwDebugEventCode == EXCEPTION_DEBUG_EVENT:
+                print "예외처리 루틴"
+
+            elif debug_event.dwDebugEventCode == CREATE_THREAD_DEBUG_EVENT:
+                print "CREATE_THREAD"
+
+            elif debug_event.dwDebugEventCode == CREATE_PROCESS_DEBUG_EVENT:
+                print "CREATE_PROCESS"
+                
+
+            elif debug_event.dwDebugEventCode == EXIT_THREAD_DEBUG_EVENT:
+                print "EXIT_THREAD"
+
+            elif debug_event.dwDebugEventCode == EXIT_PROCESS_DEBUG_EVENT:
+                print "EXIT_PROCESS"
+                exit(0)
+                
+            elif debug_event.dwDebugEventCode == LOAD_DLL_DEBUG_EVENT:
+                print "LOAD_DLL"
+
+            elif debug_event.dwDebugEventCode == UNLOAD_DLL_DEBUG_EVENT:
+                print "UNLOAD_DLL"
+
+            elif debug_event.dwDebugEventCode == OUTPUT_DEBUG_STRING_EVENT:
+                print "OUTPUT_DEBUG_STRING_EVENT"
+
+            elif debug_event.dwDebugEventCode == RIP_EVENT:
+                print "RIP_EVENT"
+
+                
+            kernel32.ContinueDebugEvent(debug_event.dwProcessId,\
                 debug_event.dwThreadId,\
-                continue_status)
+                DBG_CONTINUE)
 
 
     def detach(self):
